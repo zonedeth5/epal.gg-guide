@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Provider-agnostic character identity sheet and exact-value image prompt builder.">
+<title>Character Sheet → Prompt Builder</title>
+<style>
+:root{color-scheme:dark;--bg:#111019;--panel:#1b1925;--panel2:#242131;--ink:#f4f0fb;--muted:#b9b1c8;--line:#40394e;--accent:#b99af8;--accent2:#e1d3ff;--warn:#f2cb83}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:26px max(20px,calc((100vw - 1240px)/2));background:linear-gradient(125deg,#292039,#171521);border-bottom:1px solid var(--line)}
+h1{font-size:clamp(1.5rem,3vw,2.25rem);margin:0 0 7px}h2{font-size:1.12rem;margin:0 0 12px}p{margin:6px 0;color:var(--muted)}.wrap{max-width:1240px;margin:auto;padding:20px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 18px}.layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:18px;align-items:start}
+.panel,.group{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}.group{margin-bottom:12px}.group h3{margin:0 0 12px;font-size:1rem;color:var(--accent2)}
+label{display:block;font-weight:600;margin:12px 0 5px}small,.hint{color:var(--muted);font-size:.82rem}
+input,textarea,select{width:100%;background:#12111a;color:var(--ink);border:1px solid #514960;border-radius:8px;padding:10px;font:inherit}
+textarea{min-height:66px;resize:vertical}input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.field{padding:8px 0 10px;border-bottom:1px solid #322d3b}.field:last-child{border:0}.field-head{display:flex;gap:10px;justify-content:space-between;align-items:baseline}.field-head label{margin:3px 0}.status{max-width:180px;padding:6px;font-size:.82rem}
+.field-help{display:block;margin:5px 0 7px;line-height:1.4}.wizard{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}.wizard button{font-size:.82rem;padding:7px 10px}.wizard button[aria-current=step]{background:#7252a8;border-color:#b99af8}.step-head{margin-bottom:14px}.step-head p{margin-top:4px}.step-count{font-size:.82rem;color:var(--muted)}.step-actions{display:flex;justify-content:space-between;gap:10px;margin-top:14px}.step-actions button{min-width:44px;min-height:44px}.progress{height:6px;background:#332d3d;border-radius:99px;overflow:hidden;margin:8px 0 12px}.progress>span{display:block;height:100%;background:var(--accent);width:0}.meta{display:block;color:var(--muted);margin:0 0 8px}
+button,.file-button{border:1px solid #6c5b89;background:#382d4b;color:white;padding:9px 13px;border-radius:9px;font-weight:650;cursor:pointer}
+button.primary{background:#7252a8;border-color:#9878cb}button:hover,.file-button:hover{filter:brightness(1.15)}button:disabled{opacity:.45;cursor:not-allowed}
+.preview{position:sticky;top:12px}.prompt-card{background:#12111a;border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0}.prompt-card h3{font-size:.95rem;margin:0 0 8px;color:var(--accent2)}pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;color:#eee8f8;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;max-height:380px;overflow:auto}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:3px 9px;font-size:.78rem;color:var(--muted)}.warning{color:var(--warn)}.ok{color:#a9e4c0}.hidden{display:none!important}
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+#importFile:focus-visible + .file-button{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:25px 0;color:var(--muted);font-size:.84rem}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.preview{position:static}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><span class="pill">Local browser prototype · no account required</span><h1>Character Sheet → Prompt Builder</h1><p>Enter each design decision once. The live prompt preview reads the same field registry and preserves your exact values.</p></div></header>
+<main class="wrap">
+<div class="toolbar">
+<label for="task" style="margin:0">Output task</label>
+<select id="task" style="width:auto"><option value="character">Character set — anime / 3D / chibi</option><option value="canonical">Canonical reference sheet</option><option value="logo">Logo exploration</option></select>
+<button class="primary" id="copyAll">Copy all prompts</button><button id="export">Export JSON</button><input class="visually-hidden" type="file" id="importFile" accept=".json,application/json"><label class="file-button" for="importFile">Import JSON</label>
+<button id="reset">Reset form</button>
+</div>
+<p id="copyFeedback" class="copy-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+<div class="layout">
+<section id="formRoot" aria-label="Character input sheet"></section>
+<aside class="panel preview">
+<h2>Live prompt preview</h2>
+<p id="validation" aria-live="polite">Exploratory prompts can be previewed while fields are undecided. Canonical approval requires the core identity fields.</p>
+<div id="promptRoot"></div>
+<p class="hint">Reference IDs are labels only. Attach the corresponding image files separately in your image-generation tool. No image is generated by this page.</p>
+</aside>
+</div>
+<footer>All fields begin as undecided. Data stays in memory only while this page remains open; reloading or closing it loses unsaved entries. Export JSON to keep a copy. No network calls or external libraries are used.</footer>
+</main>
+<script src="schema.js"></script>
+<script>
+(function(){
+"use strict";
+const B=window.EpalBuilder;
+let values=B.initialValues();
+let canonicalReviewed=false;
+let validationMarkup=null;
+let currentStep=0;
+const formRoot=document.getElementById("formRoot"),promptRoot=document.getElementById("promptRoot"),taskEl=document.getElementById("task");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function stepsForTask(){
+ const task=taskEl.value;
+ const allowed=task==="canonical"?["foundation","appearance","references"]:task==="logo"?["foundation","appearance","references","logo"]:["foundation","appearance","rendering","composition","references"];
+ return B.wizardSteps.filter(step=>allowed.includes(step.id)&&B.fields.some(f=>step.groups.includes(f.group)));
+}
+function control(f,entry){
+ const id="field-"+f.id.replace(/[^a-z0-9_-]/gi,"-");
+ const common='data-field="'+esc(f.id)+'"';
+ let input="";
+ if(f.type==="textarea") input='<textarea id="'+id+'" '+common+' aria-describedby="'+id+'-help">'+esc(entry.value)+'</textarea>';
+ else if(f.type==="select") input='<select id="'+id+'" '+common+' aria-describedby="'+id+'-help"><option value="">Undecided</option>'+B.styleOptions.map(s=>'<option value="'+s+'" '+(entry.value===s?"selected":"")+'>'+s.toUpperCase()+'</option>').join("")+'</select>';
+ else input='<input id="'+id+'" type="text" '+common+' value="'+esc(entry.value)+'" aria-describedby="'+id+'-help">';
+ const status='<select class="status" aria-label="'+esc(f.label)+' value status" data-status="'+esc(f.id)+'"><option value="undecided" '+(entry.status==="undecided"?"selected":"")+'>Undecided</option><option value="user_confirmed" '+(entry.status==="user_confirmed"?"selected":"")+'>User confirmed</option><option value="project_default" '+(entry.status==="project_default"?"selected":"")+'>Project default</option><option value="not_applicable" '+(entry.status==="not_applicable"?"selected":"")+'>Not applicable</option></select>';
+ return '<div class="field"><div class="field-head"><label for="'+id+'">'+esc(f.label)+(f.required?' <span class="warning">*</span>':'')+'</label>'+status+'</div>'+input+'<small class="field-help" id="'+id+'-help">'+esc(f.help)+'</small></div>';
+}
+function renderForm(restoreFocus=false){
+ const steps=stepsForTask();
+ currentStep=Math.max(0,Math.min(currentStep,steps.length-1));
+ const step=steps[currentStep];
+ const decided=step.groups.flatMap(g=>B.fields.filter(f=>f.group===g)).filter(f=>values[f.id]&&values[f.id].value.trim()&&values[f.id].status!=="undecided").length;
+ const total=step.groups.reduce((n,g)=>n+B.fields.filter(f=>f.group===g).length,0);
+ const pct=total?Math.round(decided/total*100):0;
+ const nav=steps.map((item,i)=>'<button type="button" data-step="'+i+'" '+(i===currentStep?'aria-current="step"':'')+'>'+ (i+1)+'. '+esc(item.title)+'</button>').join("");
+ const groups=step.groups;
+ formRoot.innerHTML='<section class="panel"><div class="step-head"><span class="step-count">Step '+(currentStep+1)+' of '+steps.length+' · '+decided+' of '+total+' fields decided</span><div class="progress" role="progressbar" aria-label="Current step completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><span style="width:'+pct+'%"></span></div><nav class="wizard" aria-label="Prompt builder steps">'+nav+'</nav><h2 id="stepHeading" tabindex="-1">'+esc(step.title)+'</h2><p>'+esc(step.description)+'</p></div>'+groups.map(g=>'<section class="group"><h3>'+esc(g)+'</h3>'+B.fields.filter(f=>f.group===g).map(f=>control(f,values[f.id])).join("")+'</section>').join("")+'<div class="step-actions"><button type="button" id="stepBack" '+(currentStep===0?'disabled':'')+'>Back</button><button type="button" class="primary" id="stepNext" '+(currentStep===steps.length-1?'disabled':'')+'>Next step</button></div></section>';
+ if(restoreFocus)document.getElementById("stepHeading").focus();
+ formRoot.querySelectorAll("[data-field]").forEach(el=>el.addEventListener("input",()=>{values[el.dataset.field].value=el.value;canonicalReviewed=false;renderPrompts();}));
+ formRoot.querySelectorAll("[data-status]").forEach(el=>el.addEventListener("change",()=>{values[el.dataset.status].status=el.value;canonicalReviewed=false;renderPrompts();}));
+ formRoot.querySelectorAll("[data-step]").forEach(el=>el.addEventListener("click",()=>{currentStep=Number(el.dataset.step);renderForm(true);}));
+ document.getElementById("stepBack").addEventListener("click",()=>{currentStep--;renderForm(true);});
+ document.getElementById("stepNext").addEventListener("click",()=>{currentStep++;renderForm(true);});
+}
+function renderPrompts(){
+ const task=taskEl.value,validation=B.validate(values,task);
+ const requiredText=validation.errors.length?"Required fields needing explicit user confirmation: "+validation.errors.join(", "):"Required identity checks passed.";
+ const status=document.getElementById("validation");
+ let statusMarkup;
+ if(task==="canonical"){
+  statusMarkup=validation.valid
+   ?'<span class="ok">'+esc(requiredText)+'</span><p>Review the complete reference-sheet prompt below. Copying stays locked until you explicitly approve this review.</p><label style="display:flex;gap:9px;align-items:flex-start;font-weight:500"><input id="canonicalReview" type="checkbox" style="width:auto;margin-top:5px" '+(canonicalReviewed?'checked':'')+'> I have reviewed the canonical prompt and approve it for copying.</label>'
+   :'<span class="warning">'+esc(requiredText)+'</span><p>Exploratory preview is available, but canonical copying is locked.</p>';
+ }else if(task==="character"&&!validation.valid){
+  statusMarkup='<span class="warning">Character prompt copying is blocked until adult presentation is explicitly confirmed.</span><p>'+esc(validation.errors.join("; "))+'</p>';
+ }else{
+  statusMarkup="Preview is available; undecided values are not invented.";
+ }
+ const focusedReview=document.activeElement && document.activeElement.id==="canonicalReview";
+ if(validationMarkup!==statusMarkup){
+  status.innerHTML=statusMarkup;
+  validationMarkup=statusMarkup;
+  if(focusedReview){
+   const nextReview=document.getElementById("canonicalReview");
+   if(nextReview)nextReview.focus();
+  }
+ }
+ const canCopy=validation.valid&&(task!=="canonical"||canonicalReviewed);
+ const prompts=B.buildPrompts(values,task,B.styleOptions);
+ const revision=values["project.version"]&&values["project.version"].value.trim()?values["project.version"].value.trim():"not set";
+ promptRoot.innerHTML=prompts.map((p,i)=>'<div class="prompt-card"><h3>'+esc(p.style.toUpperCase())+' <button data-copy="'+i+'" '+(canCopy?'':'disabled')+' style="float:right;padding:5px 9px">Copy</button></h3><small class="meta">Prompt engine v'+esc(B.promptEngineVersion)+' · Project revision: '+esc(revision)+'</small><pre>'+esc(p.prompt)+'</pre></div>').join("");
+ promptRoot.querySelectorAll("[data-copy]").forEach(btn=>btn.addEventListener("click",()=>{if(canCopy)copy(prompts[Number(btn.dataset.copy)].prompt);}));
+ document.getElementById("copyAll").disabled=!canCopy;
+ const review=document.getElementById("canonicalReview");
+ if(review)review.addEventListener("change",()=>{canonicalReviewed=review.checked;renderPrompts();});
+}
+async function copy(text){const feedback=document.getElementById("copyFeedback");feedback.textContent="Copying…";try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);feedback.textContent="Copied to clipboard.";return true;}}catch(e){}try{const t=document.createElement("textarea");t.value=text;t.setAttribute("readonly","");t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();const ok=document.execCommand("copy");t.remove();feedback.textContent=ok?"Copied to clipboard.":"Copy was blocked. Select the prompt text and copy it manually.";return ok;}catch(e){feedback.textContent="Copy failed. Select the prompt text and copy it manually.";return false;}}
+taskEl.addEventListener("change",()=>{canonicalReviewed=false;currentStep=0;renderForm(true);renderPrompts();});
+document.getElementById("copyAll").addEventListener("click",()=>{const task=taskEl.value;const validation=B.validate(values,task);if(!validation.valid||(task==="canonical"&&!canonicalReviewed))return;copy(B.buildPrompts(values,task,B.styleOptions).map(p=>"=== "+p.style.toUpperCase()+" ===\n"+p.prompt).join("\n\n"));});
+document.getElementById("export").addEventListener("click",()=>{const blob=new Blob([JSON.stringify(B.exportRecord(values,taskEl.value),null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="character-prompt-sheet.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+const MAX_IMPORT_BYTES=2*1024*1024;
+document.getElementById("importFile").addEventListener("change",async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+  if(!/\.json$/i.test(file.name))throw new Error("Please choose a file with a .json extension.");
+  if(file.type&&file.type!=="application/json"&&!/^application\/[a-z0-9.+-]+\+json$/i.test(file.type))throw new Error("The selected file is not declared as JSON. Choose a valid JSON export.");
+  if(file.size>MAX_IMPORT_BYTES)throw new Error("This JSON file is larger than the 2 MiB import limit. Export a smaller profile or split the data before importing.");
+  const data=JSON.parse(await file.text());
+  const inspected=B.inspectImportRecord(data);
+  if(!inspected.valid)throw new Error(inspected.error);
+  values=inspected.values;
+  if(inspected.task)taskEl.value=inspected.task;
+  canonicalReviewed=false;currentStep=0;
+  renderForm(true);renderPrompts();
+  if(inspected.warnings.length)alert("Imported with compatibility notes:\n\n"+inspected.warnings.map(w=>"• "+w).join("\n"));
+ }catch(err){alert("Could not import this JSON: "+err.message);}
+ e.target.value="";
+});
+document.getElementById("reset").addEventListener("click",()=>{if(!confirm("Reset every field to undecided? Export a JSON backup first if needed."))return;values=B.initialValues();canonicalReviewed=false;currentStep=0;renderForm(true);renderPrompts();});
+renderForm();renderPrompts();
+})();
+</script>
+</body></html>
